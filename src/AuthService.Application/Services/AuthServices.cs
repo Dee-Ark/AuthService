@@ -19,7 +19,7 @@ namespace AuthService.Application.Services
         private readonly JwtSettings _jwt = jwtOpt.Value;
         private readonly ILogger<AuthServices> _logger = logger;
 
-        public async Task<ApiResponse<AuthResponse>> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
+        public async Task<ApiResponse<RegisterResponse>> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
         {
             _logger.LogInformation("Registration attempt for email: {Email}", request.Email);
 
@@ -28,8 +28,8 @@ namespace AuthService.Application.Services
                 var existing = await _users.GetByEmailAsync(request.Email, ct);
                 if (existing is not null)
                 {
-                    _logger.LogWarning($"User with Email {request.Email} already registered", request.Email);
-                    return ApiResponse<AuthResponse>.FailResponse($"User with Email {request.Email} already exist.");
+                    _logger.LogWarning("User with Email {Email} already registered", request.Email);
+                    return ApiResponse<RegisterResponse>.FailResponse($"User with Email {request.Email} already exists.");
                 }
 
                 var user = new User
@@ -44,15 +44,17 @@ namespace AuthService.Application.Services
 
                 _logger.LogInformation("User registered successfully: {UserId}", user.Id);
 
-                var token = GenerateToken(user); 
-                return ApiResponse<AuthResponse>.SuccessResponse(token, "Registration successful");
+                var response = new RegisterResponse(user.Id, user.Email, user.FullName);
+
+                return ApiResponse<RegisterResponse>.SuccessResponse(response, "Registration successful");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error during registration for email: {Email}", request.Email);
-                return ApiResponse<AuthResponse>.FailResponse("An unexpected error occurred.");
+                return ApiResponse<RegisterResponse>.FailResponse("An unexpected error occurred.");
             }
         }
+
 
         public async Task<ApiResponse<AuthResponse>> LoginAsync(LoginRequest req, CancellationToken ct = default)
         {
