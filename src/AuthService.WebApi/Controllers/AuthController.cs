@@ -12,14 +12,14 @@ namespace AuthService.WebApi.Controllers
         public AuthController(IAuthService authService) => _authService = authService;
 
         [HttpPost("register")]
-        public async Task<IActionResult> Register(RegisterRequest request)
+        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
             var res = await _authService.RegisterAsync(request);
             return Ok(res);
         }
 
         [HttpPost("login")]
-        public async Task<IActionResult> Login(LoginRequest request)
+        public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
             var res = await _authService.LoginAsync(request);
             return Ok(res);
