@@ -1,32 +1,38 @@
 ﻿using AuthService.Application.Abstractions;
 using AuthService.Application.DTOs;
 using AuthService.Application.JwtTokenSettings;
+using AuthService.Domain.Entities;
 using AuthService.Domain.Repositories;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
-using Serilog;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 
 namespace AuthService.Application.Services
 {
-    public class AuthServices(IUserRepository users, IPasswordHasher hasher, IOptions<JwtSettings> jwtOpt) : IAuthService
+    public class AuthServices(IUserRepository users, IPasswordHasher hasher, IOptions<JwtSettings> jwtOpt, ILogger<AuthServices> logger) : IAuthService
     {
         private readonly IUserRepository _users = users;
         private readonly IPasswordHasher _hasher = hasher;
         private readonly JwtSettings _jwt = jwtOpt.Value;
-        //private readonly ILogger _logger = logger;
+        private readonly ILogger<AuthServices> _logger = logger;
 
-        public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
+        public async Task<ApiResponse<RegisterResponse>> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
         {
+            _logger.LogInformation("Registration attempt for email: {Email}", request.Email);
+
             try
             {
-                //_logger.Information("Fetching user by email {Email}", request.FullName);
                 var existing = await _users.GetByEmailAsync(request.Email, ct);
-                if (existing is not null) throw new InvalidOperationException("Email already registered.");
+                if (existing is not null)
+                {
+                    _logger.LogWarning("User with Email {Email} already registered", request.Email);
+                    return ApiResponse<RegisterResponse>.FailResponse($"User with Email {request.Email} already exists.");
+                }
 
-                var user = new Domain.Entities.User
+                var user = new User
                 {
                     Email = request.Email,
                     FullName = request.FullName,
@@ -36,33 +42,54 @@ namespace AuthService.Application.Services
                 await _users.AddAsync(user, ct);
                 await _users.SaveChangesAsync(ct);
 
-                return GenerateToken(user);
+                _logger.LogInformation("User registered successfully: {UserId}", user.Id);
+
+                var response = new RegisterResponse(user.Id, user.Email, user.FullName);
+
+                return ApiResponse<RegisterResponse>.SuccessResponse(response, "Registration successful");
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                throw;
+                _logger.LogError(ex, "Error during registration for email: {Email}", request.Email);
+                return ApiResponse<RegisterResponse>.FailResponse("An unexpected error occurred.");
             }
         }
 
-        public async Task<AuthResponse> LoginAsync(LoginRequest req, CancellationToken ct = default)
+
+        public async Task<ApiResponse<AuthResponse>> LoginAsync(LoginRequest req, CancellationToken ct = default)
         {
+            _logger.LogInformation("Login attempt for email: {Email}", req.Email);
+
             try
             {
-                var user = await _users.GetByEmailAsync(req.Email, ct)
-                               ?? throw new UnauthorizedAccessException("Invalid credentials.");
+                var user = await _users.GetByEmailAsync(req.Email, ct);
+
+                if (user is null)
+                {
+                    _logger.LogWarning("Login failed: User not found for email {Email}", req.Email);
+                    return ApiResponse<AuthResponse>.FailResponse("Invalid credentials.");
+                }
 
                 if (!_hasher.VerifyPassword(req.Password, user.PasswordHash))
-                    throw new UnauthorizedAccessException("Invalid credentials.");
+                {
+                    _logger.LogWarning("Login failed: Incorrect password for email {Email}", req.Email);
+                    return ApiResponse<AuthResponse>.FailResponse("Invalid credentials.");
+                }
 
-                return GenerateToken(user);
+                var token = GenerateToken(user);
+
+                _logger.LogInformation("User logged in successfully: {UserId}", user.Id);
+
+                return ApiResponse<AuthResponse>.SuccessResponse(token, "Login successful");
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                throw;
+                _logger.LogError(ex, "Error during login for email: {Email}", req.Email);
+                return ApiResponse<AuthResponse>.FailResponse("An unexpected error occurred.");
             }
         }
 
-        private AuthResponse GenerateToken(Domain.Entities.User user)
+        private AuthResponse GenerateToken(User user)
         {
             var claims = new[]
             {
