@@ -17,7 +17,7 @@ namespace AuthService.WebApi.ApplicationServiceExtensions
         public static IServiceCollection AddAppServices(this IServiceCollection services, IConfiguration cfg)
         {
             services.AddDbContext<AuthDbContext>(o =>
-                o.UseNpgsql(cfg.GetConnectionString("DefaultConnection")));
+                o.UseSqlServer(cfg.GetConnectionString("DefaultConnection")));
 
             services.AddControllers(options =>
             {
